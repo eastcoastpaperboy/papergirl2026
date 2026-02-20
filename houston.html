@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Papergirl 2026 - Houston</title>
+    <style>
+      html, body {
+        margin: 0;
+        background: #111;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }
+      canvas {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        width: 1024px;
+        height: 768px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="512" height="384"></canvas>
+    <script>
+const W = 512;
+const H = 384;
+const ctx = document.getElementById("c").getContext("2d");
+ctx.imageSmoothingEnabled = false;
+
+function roadW(y) { return 140 + Math.floor(y / 6); }
+function sideW(y) { return  48 + Math.floor(y / 24); }
+const CURB_W = 4;
+
+function drawBase() {
+  for (let y = 0; y < H; y++) {
+    const xRight    = 780 - y;
+    const rw        = roadW(y);
+    const sw        = sideW(y);
+    const roadL     = xRight - rw;
+    const curbR     = roadL;
+    const curbL     = curbR  - CURB_W;
+    const sidewalkL = curbL  - sw;
+
+    if (sidewalkL > 0) {
+      ctx.fillStyle = "#00A000";
+      ctx.fillRect(0, y, sidewalkL, 1);
+    }
+    ctx.fillStyle = "#BEBEBE";
+    ctx.fillRect(Math.max(0,sidewalkL), y, sw, 1);
+    // Sidewalk seams — horizontal lines scrolling with the world
+    const seamSpacing = 48;
+    const seamOffset = Math.floor(scroll) % seamSpacing;
+    if ((y + seamOffset) % seamSpacing === 0) {
+      ctx.fillStyle = "#999999";
+      ctx.fillRect(Math.max(0, sidewalkL), y, sw, 1);
+    }
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(curbL,     y, 1, 1);
+    ctx.fillStyle = "#777777";
+    ctx.fillRect(curbL + 1, y, 2, 1);
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(curbL + 3, y, 1, 1);
+    if (roadL < W) {
+      ctx.fillStyle = "#222222";
+      ctx.fillRect(Math.max(0,roadL), y, W - Math.max(0,roadL), 1);
+    }
+  }
+}
+
+let scroll = 0;
+const SPEED = 1.5;
+
+function toScreen(wx, wy) {
+  return {
+    x: Math.floor(wx + scroll),
+    y: Math.floor(wy - scroll),
+  };
+}
+
+function offScreen(sx, sy) {
+  return sx > W + 60 || sx < -60 || sy > H + 60 || sy < -60;
+}
+
+// Procedural object spawning
+// Objects live in world space, get recycled when they go off screen
+const SPAWN_INTERVAL = 140; // world units between spawns
+let nextSpawn = 0;
+
+const objects = [];
+
+function spawnNext() {
+  // Spawn ahead (lower-left in world = higher wx, lower wy since scroll moves up-right)
+  const wx = -100 - (scroll % SPAWN_INTERVAL);
+  const wy = 250 + Math.random() * 60;
+
+  const roll = Math.random();
+  if (roll < 0.4) {
+    objects.push({ type: 'tree', wx: wx - scroll, wy });
+  } else if (roll < 0.7) {
+    objects.push({ type: 'fence', wx: wx - scroll, wy });
+  } else {
+    objects.push({ type: 'can',   wx: wx - scroll, wy });
+  }
+}
+
+// Seed initial objects spread across the scene
+for (let i = 0; i < 30; i++) {
+  const wx = -i * 150;
+  const wy = 200 + Math.random() * 80;
+  const roll = Math.random();
+  objects.push({
+    type: roll < 0.5 ? 'tree' : roll < 0.75 ? 'fence' : 'can',
+    wx, wy
+  });
+}
+
+function drawTree(sx, sy) {
+  ctx.fillStyle = '#5a3a10';
+  ctx.fillRect(sx + 8, sy - 30, 4, 30);
+  ctx.fillStyle = '#177017';
+  ctx.fillRect(sx, sy - 55, 20, 26);
+  ctx.fillStyle = '#1a9a1a';
+  ctx.fillRect(sx + 4, sy - 63, 12, 10);
+}
+
+function drawFence(sx, sy) {
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 5; i++) {
+    // picket
+    ctx.fillRect(sx + i * 14, sy - 20, 4, 20);
+    // pointed top
+    ctx.fillRect(sx + i * 14 + 1, sy - 24, 2, 4);
+  }
+  // rails
+  ctx.fillRect(sx, sy - 16, 66, 2);
+  ctx.fillRect(sx, sy - 8,  66, 2);
+}
+
+function drawCan(sx, sy) {
+  ctx.fillStyle = '#666';
+  ctx.fillRect(sx, sy - 20, 14, 20);
+  ctx.fillStyle = '#888';
+  ctx.fillRect(sx - 1, sy - 22, 16, 4);
+  ctx.fillStyle = '#555';
+  ctx.fillRect(sx + 2, sy - 18, 10, 16);
+}
+
+function drawObjects() {
+  // Sort by world y so closer objects draw on top
+  objects.sort((a, b) => a.wy - b.wy);
+
+  for (let i = objects.length - 1; i >= 0; i--) {
+    const o = objects[i];
+    const s = toScreen(o.wx, o.wy);
+
+    if (offScreen(s.x, s.y)) {
+      // Recycle — respawn behind the player (ahead in world)
+      o.wx = -scroll - 100 - Math.random() * 80;
+      o.wy = 180 + Math.random() * 100;
+      continue;
+    }
+
+    if (o.type === 'tree')  drawTree(s.x, s.y);
+    if (o.type === 'fence') drawFence(s.x, s.y);
+    if (o.type === 'can')   drawCan(s.x, s.y);
+  }
+}
+
+function loop() {
+  scroll -= SPEED;
+  ctx.clearRect(0, 0, W, H);
+  drawBase();
+  drawObjects();
+  requestAnimationFrame(loop);
+}
+
+loop();
+    </script>
+  </body>
+</html>
