@@ -13,19 +13,236 @@ body{
   overflow:hidden;
   font-family:monospace;
 }
-canvas{
-  image-rendering:pixelated;
-  image-rendering:crisp-edges;
+.game-wrap{
+  position:relative;
   width:min(100vw, calc(100vh * 4 / 3));
   height:calc(min(100vw, calc(100vh * 4 / 3)) * 0.75);
+}
+canvas{
+  display:block;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+  width:100%;
+  height:100%;
   border:2px solid #2b2b2b;
   box-shadow:0 0 0 2px #111, 0 20px 40px rgba(0,0,0,0.45);
   touch-action:none;
 }
+.mute-btn{
+  position:absolute;
+  top:10px;
+  right:10px;
+  width:34px;
+  height:34px;
+  border:1px solid #2f5f2f;
+  background:rgba(0,0,0,0.65);
+  color:#9cffb2;
+  border-radius:7px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  z-index:5;
+}
+.mute-btn:hover{
+  background:rgba(8,26,8,0.88);
+}
+.mute-btn svg{
+  width:20px;
+  height:20px;
+}
+.mute-btn .bell{
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.mute-btn .slash{
+  display:none;
+  stroke:#ff7a7a;
+  stroke-width:2.5;
+  stroke-linecap:round;
+}
+.mute-btn.muted .slash{
+  display:block;
+}
+.scores-panel{
+  position:absolute;
+  top:52px;
+  right:10px;
+  width:120px;
+  padding:6px 7px 7px;
+  border:1px solid #2f5f2f;
+  background:rgba(0,0,0,0.68);
+  color:#9cffb2;
+  font-size:9px;
+  line-height:1.45;
+  z-index:4;
+}
+.scores-panel.hidden{
+  display:none;
+}
+.scores-title{
+  color:#ffe066;
+  margin-bottom:3px;
+  letter-spacing:0.4px;
+}
+.scores-list{
+  list-style:none;
+}
+.scores-list li{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+}
+.scores-list .name{
+  color:#b8efff;
+}
+.scores-list .score{
+  color:#f0f0f0;
+}
+.score-entry{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%);
+  width:232px;
+  border:2px solid #ffe066;
+  background:rgba(0,0,0,0.88);
+  color:#f0f0f0;
+  padding:10px;
+  z-index:9;
+}
+.score-entry.hidden{
+  display:none;
+}
+.score-entry-title{
+  color:#ffe066;
+  font-size:11px;
+  margin-bottom:6px;
+}
+.score-entry-sub{
+  color:#9cffb2;
+  font-size:10px;
+  margin-bottom:8px;
+}
+.score-entry-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.score-entry-name{
+  flex:1;
+  font:inherit;
+  text-transform:uppercase;
+  background:#101010;
+  color:#b8efff;
+  border:1px solid #3f6f3f;
+  padding:5px 6px;
+  outline:none;
+}
+.score-entry-name:focus{
+  border-color:#ffe066;
+}
+.score-entry-save{
+  font:inherit;
+  color:#ffe066;
+  background:#1a1a1a;
+  border:1px solid #5d5d20;
+  padding:5px 8px;
+  cursor:pointer;
+}
+.score-entry-save:hover{
+  background:#2a2a18;
+}
+.score-entry-msg{
+  min-height:14px;
+  font-size:9px;
+  margin-top:7px;
+  color:#ff9b9b;
+}
+.gameover-board{
+  position:absolute;
+  right:12px;
+  bottom:12px;
+  width:min(300px, calc(100% - 24px));
+  border:2px solid #ffe066;
+  background:rgba(0,0,0,0.84);
+  color:#f0f0f0;
+  padding:8px 10px 9px;
+  z-index:8;
+}
+.gameover-board.hidden{
+  display:none;
+}
+.gameover-title{
+  color:#ffe066;
+  font-size:11px;
+  margin-bottom:6px;
+  letter-spacing:0.5px;
+}
+.gameover-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:10px;
+}
+.gameover-table th{
+  color:#9cffb2;
+  font-weight:normal;
+  text-align:left;
+  padding-bottom:3px;
+}
+.gameover-table td{
+  padding:1px 0;
+}
+.gameover-table .rank{
+  color:#f0f0f0;
+  width:24px;
+}
+.gameover-table .name{
+  color:#b8efff;
+  width:74px;
+}
+.gameover-table .score{
+  color:#f0f0f0;
+  text-align:right;
+}
 </style>
 </head>
 <body>
-<canvas id="c" width="512" height="384"></canvas>
-<script type="module" src="./houston-game.js"></script>
+<div class="game-wrap">
+  <canvas id="c" width="512" height="384"></canvas>
+  <button id="mute-btn" class="mute-btn" type="button" aria-label="Mute audio" title="Mute audio">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path class="bell" d="M12 4a4 4 0 0 0-4 4v3.5c0 1.6-.7 3.1-1.9 4.1L5 17h14l-1.1-1.4A5.3 5.3 0 0 1 16 11.5V8a4 4 0 0 0-4-4z"/>
+      <path class="bell" d="M10 19a2 2 0 0 0 4 0"/>
+      <line class="slash" x1="5" y1="5" x2="19" y2="19"></line>
+    </svg>
+  </button>
+  <div id="scores-panel" class="scores-panel" aria-live="polite">
+    <div class="scores-title">TOP SCORE</div>
+    <ol id="scores-list" class="scores-list"></ol>
+  </div>
+  <div id="score-entry" class="score-entry hidden" role="dialog" aria-modal="true" aria-label="Enter initials">
+    <div class="score-entry-title">ENTER NAME</div>
+    <div id="score-entry-sub" class="score-entry-sub">SCORE 000000</div>
+    <div class="score-entry-row">
+      <input id="score-name" class="score-entry-name" type="text" maxlength="5" autocomplete="off" spellcheck="false" placeholder="AAAAA">
+      <button id="score-save" class="score-entry-save" type="button">SAVE</button>
+    </div>
+    <div id="score-entry-msg" class="score-entry-msg"></div>
+  </div>
+  <div id="gameover-board" class="gameover-board hidden" aria-live="polite">
+    <div class="gameover-title">TOP 10 SCORERS</div>
+    <table class="gameover-table">
+      <thead>
+        <tr><th>#</th><th>NAME</th><th style="text-align:right;">SCORE</th></tr>
+      </thead>
+      <tbody id="gameover-scores-body"></tbody>
+    </table>
+  </div>
+</div>
+<script type="module" src="./houston-game.js?v=50"></script>
 </body>
 </html>

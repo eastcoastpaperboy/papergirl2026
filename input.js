@@ -16,6 +16,9 @@ function toCanvasPos(canvas, e) {
 }
 
 function pointerRole(game, x, y) {
+  if (game.scoreEntryActive) {
+    return 'score';
+  }
   if (game.mode !== GAME_PLAYING) {
     return 'start';
   }
@@ -67,6 +70,10 @@ export function bindInput(canvas, game, actions) {
     const p = toCanvasPos(canvas, e);
     const role = pointerRole(game, p.x, p.y);
 
+    if (role === 'score') {
+      return;
+    }
+
     if (role === 'start') {
       if (game.mode === GAME_TITLE || game.mode === GAME_OVER) {
         actions.startGame();
@@ -111,6 +118,10 @@ export function bindInput(canvas, game, actions) {
   canvas.addEventListener('pointerout', clearPointer);
 
   document.addEventListener('keydown', (e) => {
+    if (game.scoreEntryActive) {
+      return;
+    }
+
     const k = e.key.toLowerCase();
 
     if (['arrowleft', 'arrowright', 'arrowup', ' ', 'spacebar', 'enter', 'p', 'escape', 'a', 'd', 'b'].includes(k)) {
@@ -163,6 +174,9 @@ export function bindInput(canvas, game, actions) {
   });
 
   document.addEventListener('keyup', (e) => {
+    if (game.scoreEntryActive) {
+      return;
+    }
     game.held.delete(e.key.toLowerCase());
   });
 }

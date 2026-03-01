@@ -9,12 +9,9 @@ export const GAME_OVER = 'gameover';
 export const PLAYER_Y = 286;
 export const ICE_START = 22;
 export const ICE_MAX = 48;
-
-export const HOME_STYLES = [
-  { wall: '#f0f0f0', wallShade: '#d7d7d7', accent: '#111', roofDark: '#0b0b0b', roofLight: '#f3f3f3', flower: '#31c73b' },
-  { wall: '#efe7b8', wallShade: '#d6ce9c', accent: '#111', roofDark: '#0b0b0b', roofLight: '#f3f3f3', flower: '#31c73b' },
-  { wall: '#a30e6f', wallShade: '#8c0b5f', accent: '#f3f3f3', roofDark: '#0b0b0b', roofLight: '#f3f3f3', flower: '#cf57ad' },
-];
+export const CROSS_STREET_PERIOD = 1860;
+export const CROSS_STREET_HEIGHT = 100;
+export const HOME_STYLE_COUNT = 3;
 
 function createPlayer() {
   return {
@@ -28,6 +25,8 @@ function createPlayer() {
     jumpZ: 0,
     jumpV: 0,
     bundleTick: 0,
+    facing: 1,
+    turnInput: 0,
   };
 }
 
@@ -52,6 +51,11 @@ export function createGameState({ bestScore = 0, touchEnabled = false } = {}) {
 
     spawnHomeT: 0,
     spawnHazardT: 0,
+    homeSpawnIndex: 0,
+    bikeHitSfxTick: 0,
+    paperHitSfxTick: 0,
+    scoreEntryActive: false,
+    scoreSubmittedForRound: false,
 
     bestScore,
     held: new Set(),
@@ -67,15 +71,20 @@ export function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+export function wrapMod(value, mod) {
+  const r = value % mod;
+  return r < 0 ? r + mod : r;
+}
+
 export function rand(min, max) {
   return min + Math.random() * (max - min);
 }
 
-export function roadW(y) {
+function roadW(y) {
   return 140 + Math.floor(y / 6);
 }
 
-export function sideW(y) {
+function sideW(y) {
   return 48 + Math.floor(y / 24);
 }
 
@@ -90,7 +99,8 @@ export function laneAt(y) {
 }
 
 export function homeScale(y) {
-  return clamp(0.72 + (y / H) * 0.58, 0.72, 1.22);
+  // Flatter perspective keeps large PNG homes from ballooning near the camera.
+  return clamp(0.70 + (y / H) * 0.30, 0.70, 1.0);
 }
 
 export function homeGeometry(home) {
@@ -104,6 +114,15 @@ export function homeGeometry(home) {
   const doorX = frontX + houseW * 0.6;
   const doorY = baseY - houseH * 0.28;
   return { s, baseY, frontX, houseW, houseH, sideWidth, roofH, doorX, doorY };
+}
+
+function intersectionPhase(y, scroll) {
+  return wrapMod(y + Math.floor(scroll), CROSS_STREET_PERIOD);
+}
+
+export function isIntersectionBand(y, scroll, pad = 0) {
+  const p = intersectionPhase(y, scroll);
+  return p < (CROSS_STREET_HEIGHT + pad) || p > (CROSS_STREET_PERIOD - pad);
 }
 
 export function overlapCircle(x1, y1, r1, x2, y2, r2) {
