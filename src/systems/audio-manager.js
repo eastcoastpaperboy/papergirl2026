@@ -2,7 +2,7 @@ import {
   GAME_OVER,
   GAME_PAUSED,
   GAME_PLAYING,
-} from './entities.js';
+} from '../core/entities.js';
 
 const AUDIO_MUTE_KEY = 'papergirl_audio_muted';
 const BGM_VOLUME = 0.55;
@@ -11,22 +11,22 @@ const BIKE_HIT_VOLUME = 0.85;
 const PAPER_HIT_VOLUME = 0.78;
 
 export function createAudioManager(game, { muteBtn }) {
-  const bgmTrack = new Audio('Audio/nes_morning_mayhem.wav');
+  const bgmTrack = new Audio('/Audio/nes_morning_mayhem.wav');
   bgmTrack.loop = true;
   bgmTrack.preload = 'auto';
   bgmTrack.volume = BGM_VOLUME;
 
-  const sirenTrack = new Audio('Audio/nes_police_siren_5sec_slow_realistic.wav');
+  const sirenTrack = new Audio('/Audio/nes_police_siren_5sec_slow_realistic.wav');
   sirenTrack.loop = false;
   sirenTrack.preload = 'auto';
   sirenTrack.volume = SIREN_VOLUME;
 
-  const bikeHitTrack = new Audio('Audio/nes_bike_hit_sound.wav');
+  const bikeHitTrack = new Audio('/Audio/nes_bike_hit_sound.wav');
   bikeHitTrack.loop = false;
   bikeHitTrack.preload = 'auto';
   bikeHitTrack.volume = BIKE_HIT_VOLUME;
 
-  const paperHitTrack = new Audio('Audio/nes_newspaper_mailbox_hit.wav');
+  const paperHitTrack = new Audio('/Audio/nes_newspaper_mailbox_hit.wav');
   paperHitTrack.loop = false;
   paperHitTrack.preload = 'auto';
   paperHitTrack.volume = PAPER_HIT_VOLUME;

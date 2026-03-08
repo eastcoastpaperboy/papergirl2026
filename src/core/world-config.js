@@ -1,7 +1,7 @@
 export const HOME_SPAWN_Y = -72;
 export const HOME_MIN_VERTICAL_GAP = 200;
-export const HOME_OFFSET_MIN = 38;
-export const HOME_OFFSET_MAX = 52;
+export const HOME_OFFSET_MIN = 0;
+export const HOME_OFFSET_MAX = 0;
 export const HOME_INTERSECTION_PAD = 54;
 
 export const HAZARD_SPAWN_Y = -32;

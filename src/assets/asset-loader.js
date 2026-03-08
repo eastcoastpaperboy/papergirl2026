@@ -13,6 +13,7 @@ import {
   DOG_FRAME_FILES,
   HOUSE_CORNER_SOURCE,
   HOUSE_REGULAR_SOURCES,
+  HOUSE_SPRITE_DIR,
   PLAYER_SPRITE_DISPLAY_H,
   SPIN_FRAME_FILES,
   SPRITE_SHEET_COLS,
@@ -49,6 +50,7 @@ export function createAssets() {
       ready: false,
       regular: [],
       corner: null,
+      cornerPool: [],
     },
     ready: true,
   };
@@ -86,7 +88,7 @@ function loadPlayerSprite(assets) {
       }
     };
     img.onerror = () => console.warn('papergirl.png not found');
-    img.src = 'papergirl.png';
+    img.src = '/papergirl.png';
   };
 
   let failed = false;
@@ -186,34 +188,116 @@ function loadPlayerSprite(assets) {
   }
 }
 
+const HOUSE_IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)$/i;
+
+function stripQueryAndHash(path) {
+  return String(path || '').split('#')[0].split('?')[0];
+}
+
+function normalizeHouseSource(path) {
+  const clean = stripQueryAndHash(path).replace(/^\.\//, '');
+  const spriteDir = stripQueryAndHash(HOUSE_SPRITE_DIR).replace(/\/$/, '');
+  const spriteDirBare = spriteDir.replace(/^\//, '');
+  if (!clean) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(clean) || clean.startsWith('/')) {
+    return clean;
+  }
+  if (clean.startsWith(spriteDir + '/')) {
+    return clean;
+  }
+  if (clean.startsWith(spriteDirBare + '/')) {
+    return '/' + clean;
+  }
+  return spriteDir + '/' + clean;
+}
+
+function splitHouseSpriteSources(sources) {
+  const unique = [...new Set((sources || [])
+    .map((src) => normalizeHouseSource(src))
+    .filter((src) => HOUSE_IMAGE_EXT_RE.test(stripQueryAndHash(src))))].sort();
+  const cornerSources = unique.filter((src) => /corner/i.test(src));
+  const regularOnly = unique.filter((src) => !/corner/i.test(src));
+  const regularSources = regularOnly.length > 0 ? regularOnly : unique;
+  return { regularSources, cornerSources };
+}
+
+async function discoverHouseSpriteSources() {
+  try {
+    const manifestRes = await fetch(HOUSE_SPRITE_DIR + '/manifest.json', { cache: 'no-store' });
+    if (manifestRes.ok) {
+      const manifest = await manifestRes.json();
+      const files = Array.isArray(manifest)
+        ? manifest
+        : (manifest && Array.isArray(manifest.files) ? manifest.files : []);
+      if (files.length > 0) {
+        return splitHouseSpriteSources(files);
+      }
+    }
+  } catch (e) {
+    // Ignore and try directory listing fallback.
+  }
+
+  try {
+    const listingRes = await fetch(HOUSE_SPRITE_DIR + '/', { cache: 'no-store' });
+    if (listingRes.ok) {
+      const html = await listingRes.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const hrefs = Array.from(doc.querySelectorAll('a[href]'))
+        .map((a) => stripQueryAndHash(a.getAttribute('href') || ''))
+        .filter((href) => href && href !== '../' && !href.endsWith('/'));
+      const files = hrefs.map((href) => {
+        const parts = href.split('/');
+        return parts[parts.length - 1];
+      });
+      if (files.length > 0) {
+        return splitHouseSpriteSources(files);
+      }
+    }
+  } catch (e) {
+    // Ignore and use hardcoded fallback.
+  }
+
+  return splitHouseSpriteSources([
+    ...HOUSE_REGULAR_SOURCES,
+    HOUSE_CORNER_SOURCE,
+  ]);
+}
+
 function loadHouseSprites(assets) {
   const pending = [];
   const regularCrops = [];
-  let cornerCrop = null;
+  const cornerCrops = [];
 
   const finalize = () => {
+    if (regularCrops.length === 0 && cornerCrops.length > 0) {
+      regularCrops.push(...cornerCrops);
+    }
     assets.houseSprites.regular = regularCrops;
-    assets.houseSprites.corner = cornerCrop;
+    assets.houseSprites.cornerPool = cornerCrops;
+    assets.houseSprites.corner = cornerCrops.length > 0 ? cornerCrops[0] : null;
     assets.houseSprites.ready = regularCrops.length > 0;
     if (assets.houseSprites.ready) {
       console.log(
         '[houses] sprite pack loaded regular='
         + regularCrops.length
         + ' corner='
-        + (cornerCrop ? 'yes' : 'no'),
+        + cornerCrops.length,
       );
     } else {
       console.warn('[houses] no house sprites loaded; using procedural homes');
     }
   };
 
-  for (const src of HOUSE_REGULAR_SOURCES) {
+  const enqueueLoad = (src, targetList) => {
     pending.push(new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
         const crop = cropOpaqueCanvas(img);
         if (crop) {
-          regularCrops.push(crop);
+          targetList.push(crop);
         } else {
           console.warn('[houses] empty alpha for ' + src);
         }
@@ -225,25 +309,19 @@ function loadHouseSprites(assets) {
       };
       img.src = src;
     }));
-  }
+  };
 
-  pending.push(new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      cornerCrop = cropOpaqueCanvas(img);
-      if (!cornerCrop) {
-        console.warn('[houses] empty alpha for ' + HOUSE_CORNER_SOURCE);
+  discoverHouseSpriteSources()
+    .then(({ regularSources, cornerSources }) => {
+      for (const src of regularSources) {
+        enqueueLoad(src, regularCrops);
       }
-      resolve();
-    };
-    img.onerror = () => {
-      console.warn('[houses] missing ' + HOUSE_CORNER_SOURCE);
-      resolve();
-    };
-    img.src = HOUSE_CORNER_SOURCE;
-  }));
-
-  Promise.all(pending).then(finalize).catch(() => finalize());
+      for (const src of cornerSources) {
+        enqueueLoad(src, cornerCrops);
+      }
+      Promise.all(pending).then(finalize).catch(() => finalize());
+    })
+    .catch(() => finalize());
 }
 
 function loadDogAnimation(assets) {

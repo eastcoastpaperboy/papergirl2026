@@ -5,7 +5,7 @@ import {
   GAME_TITLE,
   H,
   W,
-} from './entities.js';
+} from '../core/entities.js';
 
 function toCanvasPos(canvas, e) {
   const r = canvas.getBoundingClientRect();

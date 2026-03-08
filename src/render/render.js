@@ -1,4 +1,4 @@
-import { W } from './entities.js';
+import { W } from '../core/entities.js';
 import { drawBase, drawHomes } from './render-background.js';
 import {
   drawHazards,

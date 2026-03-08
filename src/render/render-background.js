@@ -6,12 +6,14 @@ import {
   homeGeometry,
   laneAt,
   wrapMod,
-} from './entities.js';
+} from '../core/entities.js';
 
 const HOUSE_VISUAL_SCALE = 2.0;
+// Negative tilts homes so the base rises toward the top-right, matching sidewalk perspective.
+const HOUSE_SPRITE_ROTATION_RAD = 0.10;
 
 export function drawBase(ctx, scroll) {
-  const scrollPx = Math.floor(scroll);
+  const scrollPx = scroll;
 
   for (let y = 0; y < H; y += 1) {
     const lane = laneAt(y);
@@ -54,7 +56,7 @@ export function drawBase(ctx, scroll) {
     ctx.fillStyle = '#624f3f';
     ctx.fillRect(houseL, y, Math.max(0, si - houseL), 1);
 
-    if (((y + Math.floor(scroll * 0.5)) % 30) < 2) {
+    if (wrapMod(y + scroll * 0.5, 30) < 2) {
       ctx.fillStyle = '#8e755f';
       ctx.fillRect(houseL, y, Math.max(0, si - houseL), 1);
     }
@@ -62,7 +64,7 @@ export function drawBase(ctx, scroll) {
     ctx.fillStyle = '#bebebe';
     ctx.fillRect(si, y, lane.sw, 1);
 
-    if ((y + Math.floor(scroll)) % 48 === 0) {
+    if (wrapMod(y + scroll, 48) < 1) {
       ctx.fillStyle = '#999';
       ctx.fillRect(si, y, lane.sw, 1);
     }
@@ -78,7 +80,7 @@ export function drawBase(ctx, scroll) {
       ctx.fillStyle = '#1a1a1a';
       ctx.fillRect(Math.max(0, lane.rL), y, W - Math.max(0, lane.rL), 1);
       const stripeX = lane.rL + lane.rw * 0.52;
-      if (wrapMod(y + Math.floor(scroll * 1.5), 52) < 18) {
+      if (wrapMod(y + scroll * 1.5, 52) < 18) {
         ctx.fillStyle = '#d6cf62';
         ctx.fillRect(stripeX, y, 2, 1);
       }
@@ -90,6 +92,17 @@ export function drawHomes(ctx, homes, assets) {
   const ordered = [...homes].sort((a, b) => a.y - b.y);
   const housePack = assets && assets.houseSprites;
   const hasSpriteHomes = Boolean(housePack && housePack.ready && housePack.regular.length > 0);
+  const pickSprite = (pool, seed, fallbackIndex = 0) => {
+    if (!pool || pool.length === 0) {
+      return null;
+    }
+    let idx = fallbackIndex;
+    if (Number.isFinite(seed)) {
+      idx = Math.floor(seed * pool.length);
+    }
+    idx = ((idx % pool.length) + pool.length) % pool.length;
+    return pool[idx];
+  };
   const palettes = [
     {
       front: '#d72626',
@@ -171,17 +184,6 @@ export function drawHomes(ctx, homes, assets) {
     ctx.fill();
   };
 
-  const drawMailbox = (home, g) => {
-    const mbX = home.x + 7 * g.s;
-    const mbY = home.y - 4 * g.s;
-    ctx.fillStyle = '#3d3d3d';
-    ctx.fillRect(mbX, mbY - 8 * g.s, 2 * g.s, 8 * g.s);
-    ctx.fillStyle = home.delivered ? '#9cffb2' : '#d13f3f';
-    ctx.fillRect(mbX - 6 * g.s, mbY - 12 * g.s, 9 * g.s, 6 * g.s);
-    ctx.fillStyle = '#1d1d1d';
-    ctx.fillRect(mbX - 3 * g.s, mbY - 10 * g.s, 3 * g.s, 2 * g.s);
-  };
-
   const drawFence = (home, g, palette) => {
     if (!home.fence) {
       return;
@@ -200,9 +202,13 @@ export function drawHomes(ctx, homes, assets) {
     const g = homeGeometry(home);
 
     if (hasSpriteHomes) {
-      const sprite = home.corner && housePack.corner
-        ? housePack.corner
-        : housePack.regular[home.style % housePack.regular.length];
+      const regularPool = housePack.regular;
+      const cornerPool = housePack.cornerPool && housePack.cornerPool.length > 0
+        ? housePack.cornerPool
+        : regularPool;
+      const sprite = home.corner
+        ? pickSprite(cornerPool, home.spriteSeed, home.style)
+        : pickSprite(regularPool, home.spriteSeed, home.style);
       if (sprite) {
         const targetW = g.houseW + g.sideWidth + 14 * g.s;
         const targetH = g.houseH + g.roofH + 12 * g.s;
@@ -210,12 +216,16 @@ export function drawHomes(ctx, homes, assets) {
         const drawW = Math.max(12, Math.round(sprite.width * scale));
         const drawH = Math.max(12, Math.round(sprite.height * scale));
         const lane = laneAt(home.y);
-        const sidewalkGap = Math.max(2, Math.round(2 * g.s));
-        const dx = Math.round(lane.siL - sidewalkGap - drawW);
-        const dy = Math.round(g.baseY + 1 * g.s - drawH);
-        ctx.drawImage(sprite, dx, dy, drawW, drawH);
+        const sidewalkGap = Math.max(0, Math.round(1 * g.s));
+        const houseNudge = Math.round(60 * g.s); // increase to move closer
+        const anchorX = Math.round(lane.siL - sidewalkGap + houseNudge);
+        const anchorY = Math.round(g.baseY + 1 * g.s);
+        ctx.save();
+        ctx.translate(anchorX, anchorY);
+        ctx.rotate(HOUSE_SPRITE_ROTATION_RAD);
+        ctx.drawImage(sprite, -drawW, -drawH, drawW, drawH);
+        ctx.restore();
         drawWalkway(home, g, g.doorX);
-        drawMailbox(home, g);
         drawFence(home, g, palette);
         continue;
       }
@@ -353,7 +363,6 @@ export function drawHomes(ctx, homes, assets) {
     ctx.fillRect(g.frontX + g.houseW * 0.58, bedY + 2 * g.s, 4 * g.s, 3 * g.s);
     ctx.fillRect(g.frontX + g.houseW * 0.68, bedY + 2 * g.s, 4 * g.s, 3 * g.s);
 
-    drawMailbox(home, g);
     drawFence(home, g, palette);
   }
 }

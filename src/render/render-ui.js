@@ -6,7 +6,7 @@ import {
   H,
   ICE_MAX,
   W,
-} from './entities.js';
+} from '../core/entities.js';
 
 export function drawHUD(ctx, game) {
   ctx.fillStyle = 'rgba(0,0,0,0.68)';
