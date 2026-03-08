@@ -1,6 +1,6 @@
-import { GAME_OVER } from './entities.js';
+import { GAME_OVER } from '../core/entities.js';
 
-const SCORE_ENDPOINT = 'scores.php';
+const SCORE_ENDPOINT = '/scores.php';
 const SCORE_NAME_KEY = 'papergirl_score_name';
 const SCORE_NAME_MAX = 5;
 const SCORE_LIST_LIMIT = 10;

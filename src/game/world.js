@@ -14,12 +14,11 @@ import {
   isIntersectionBand,
   overlapCircle,
   rand,
-} from './entities.js';
+} from '../core/entities.js';
 import {
   CAR_EDGE_PAD,
   DOG_AVOID_MARGIN,
   DOG_GRASS_REACH,
-  DOG_SIDEWALK_PAD,
   HAZARD_INTERSECTION_PAD,
   HAZARD_SPAWN_MAX,
   HAZARD_SPAWN_MIN,
@@ -31,11 +30,31 @@ import {
   HOME_SPAWN_Y,
   PLAYER_LEFT_EXT,
   PLAYER_RIGHT_EXT,
-} from './world-config.js';
+} from '../core/world-config.js';
+
+const GAME_SPEED_MULTIPLIER = 0.75;
+const DOG_CHASE_SPEED = 190;
+const DOG_CHASE_LEAD = 22;
+const DOG_WANDER_AMPLITUDE = 2;
+const DOG_CHASE_ROAD_REACH = 24;
+const DOG_REACTION_DELAY_MIN = 0.08;
+const DOG_REACTION_DELAY_MAX = 0.18;
+const HOME_SPAWN_RATE_MULTIPLIER = 8;
+const PLAYER_JUMP_VELOCITY = 275;
+const HOME_INTERSECTION_TOP_CLEARANCE = 110;
+const HOME_INTERSECTION_BOTTOM_CLEARANCE = 20;
+const HOME_INTERSECTION_SAMPLE_STEP = 6;
 
 function carVisualHalfWidth(y) {
   // Car GIF frames are wide; keep center far enough from curb to avoid sidewalk overlap.
   return Math.round(clamp(30 + (y / H) * 18, 28, 48));
+}
+
+function dogChaseBounds(lane) {
+  return {
+    minDogX: lane.siL - DOG_GRASS_REACH,
+    maxDogX: lane.rL + DOG_CHASE_ROAD_REACH,
+  };
 }
 
 function hazardHitCircle(hazard) {
@@ -53,6 +72,9 @@ function hazardHitCircle(hazard) {
   }
   if (hazard.kind === 'car') {
     return { x: hazard.x, y: hazard.y - 7, r: 14 };
+  }
+  if (hazard.kind === 'trashcan') {
+    return { x: hazard.x, y: hazard.y - 5, r: 10 };
   }
   return { x: hazard.x, y: hazard.y - 4, r: 9 };
 }
@@ -100,11 +122,60 @@ function addPop(game, x, y, text, color = '#ffe066') {
   game.pops.push({ x, y, text, color, t: 0.8 });
 }
 
+function homeSpawnOverlapsIntersection(scroll, centerY) {
+  const fromY = centerY - HOME_INTERSECTION_TOP_CLEARANCE;
+  const toY = centerY + HOME_INTERSECTION_BOTTOM_CLEARANCE;
+  for (let sampleY = fromY; sampleY <= toY; sampleY += HOME_INTERSECTION_SAMPLE_STEP) {
+    if (isIntersectionBand(sampleY, scroll, HOME_INTERSECTION_PAD)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function homeHitBounds(g) {
+  return {
+    left: g.frontX - 8 * g.s,
+    right: g.frontX + g.houseW + g.sideWidth + 8 * g.s,
+    top: g.baseY - g.houseH - g.roofH - 8 * g.s,
+    bottom: g.baseY + 4 * g.s,
+  };
+}
+
+function homeBackHitBounds(g) {
+  const b = homeHitBounds(g);
+  const w = b.right - b.left;
+  const h = b.bottom - b.top;
+  return {
+    left: b.left + w * 0.00,
+    right: b.left + w * 0.55,
+    top: b.top + h * 0.20,
+    bottom: b.top + h * 0.20,
+  };
+}
+
+function paperHitsHome(paper, g) {
+  const b = homeHitBounds(g);
+  return paper.x >= b.left && paper.x <= b.right && paper.y >= b.top && paper.y <= b.bottom;
+}
+
+function playerHitsHome(game, g) {
+  const b = homeBackHitBounds(g);
+  const px = game.player.x;
+  const py = PLAYER_Y - 10;
+  const pr = 12;
+  const nearestX = clamp(px, b.left, b.right);
+  const nearestY = clamp(py, b.top, b.bottom);
+  const dx = px - nearestX;
+  const dy = py - nearestY;
+  return dx * dx + dy * dy <= pr * pr;
+}
+
 export function startGame(game) {
   game.mode = GAME_PLAYING;
   game.elapsed = 0;
   game.scroll = 0;
-  game.speed = 0.9;
+  game.speed = 0.9 * GAME_SPEED_MULTIPLIER;
   game.animClock = 0;
   game.fi = 0;
   game.iceTimer = ICE_START;
@@ -129,7 +200,7 @@ export function startGame(game) {
   game.hazards.length = 0;
   game.pops.length = 0;
 
-  game.spawnHomeT = 0.35;
+  game.spawnHomeT = 0.35 / HOME_SPAWN_RATE_MULTIPLIER;
   game.spawnHazardT = 0.4;
   game.homeSpawnIndex = 0;
   game.bikeHitSfxTick = 0;
@@ -169,7 +240,7 @@ export function jumpBike(game) {
     return;
   }
   if (game.player.jumpZ === 0) {
-    game.player.jumpV = 360;
+    game.player.jumpV = PLAYER_JUMP_VELOCITY;
   }
 }
 
@@ -203,6 +274,7 @@ function spawnHome(game) {
     h,
     offset,
     style: Math.floor(rand(0, HOME_STYLE_COUNT)),
+    spriteSeed: Math.random(),
     corner: isCorner,
     fence: Math.random() < 0.58,
     delivered: false,
@@ -219,7 +291,7 @@ function spawnHazard(game) {
       y: HAZARD_SPAWN_Y,
       kind,
       carColor: kind === 'car' ? carColors[Math.floor(Math.random() * carColors.length)] : null,
-      r: kind === 'tree' ? 11 : (kind === 'dog' ? 10 : (kind === 'car' ? 14 : 9)),
+      r: kind === 'tree' ? 11 : (kind === 'dog' ? 10 : (kind === 'car' ? 14 : (kind === 'trashcan' ? 10 : 9))),
       laneU,
       phase: rand(0, 6.28),
     });
@@ -228,12 +300,12 @@ function spawnHazard(game) {
   const roll = Math.random();
   const kind = roll < 0.46
     ? 'tree'
-    : (roll < 0.67 ? 'mailbox' : (roll < 0.70 ? 'dog' : 'car'));
+    : (roll < 0.63 ? 'mailbox' : (roll < 0.71 ? 'trashcan' : (roll < 0.74 ? 'dog' : 'car')));
   const laneU = kind === 'dog'
     ? rand(-0.72, 0.68)
     : (kind === 'tree'
       ? rand(-0.95, -0.15)
-      : (kind === 'car' ? rand(0.12, 0.34) : rand(0.22, 0.92)));
+      : (kind === 'car' ? rand(0.12, 0.34) : (kind === 'trashcan' ? rand(0.10, 0.86) : rand(0.22, 0.92))));
   pushHazard(kind, laneU);
 
   // Occasionally pair a car and dog in the same spawn wave.
@@ -259,7 +331,7 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
   }
 
   game.elapsed += dt;
-  game.speed = 0.9 + Math.min(1.2, game.elapsed * 0.009);
+  game.speed = (0.9 + Math.min(1.2, game.elapsed * 0.009)) * GAME_SPEED_MULTIPLIER;
   const roadDy = game.speed * 98 * dt;
   game.scroll -= roadDy;
 
@@ -271,10 +343,12 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
     return;
   }
 
+  const frameStep = 0.20;
   game.animClock += dt;
-  if (game.animClock >= 0.20) {
-    game.animClock = 0;
-    game.fi += 1;
+  if (game.animClock >= frameStep) {
+    const advanceBy = Math.floor(game.animClock / frameStep);
+    game.animClock -= advanceBy * frameStep;
+    game.fi += advanceBy;
   }
 
   if (game.player.reload > 0) {
@@ -321,12 +395,15 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
   if (game.spawnHomeT <= 0) {
     const newestHome = game.homes.length > 0 ? game.homes[game.homes.length - 1] : null;
     const canSpawnHome = !newestHome || (newestHome.y - HOME_SPAWN_Y) >= HOME_MIN_VERTICAL_GAP;
-    const homeInIntersection = isIntersectionBand(HOME_SPAWN_Y, game.scroll, HOME_INTERSECTION_PAD);
+    const homeInIntersection = homeSpawnOverlapsIntersection(game.scroll, HOME_SPAWN_Y);
     if (canSpawnHome && !homeInIntersection) {
       spawnHome(game);
-      game.spawnHomeT = rand(0.95, 1.55) * (2.2 / (1 + game.speed * 0.25));
+      game.spawnHomeT = (
+        rand(0.95, 1.55)
+        * (2.2 / (1 + game.speed * 0.25))
+      ) / HOME_SPAWN_RATE_MULTIPLIER;
     } else {
-      game.spawnHomeT = 0.12;
+      game.spawnHomeT = 0.12 / HOME_SPAWN_RATE_MULTIPLIER;
     }
   }
   if (game.spawnHazardT <= 0) {
@@ -358,7 +435,7 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
         continue;
       }
       const g = homeGeometry(home);
-      if (Math.abs(p.x - g.doorX) < 18 + g.s * 4 && Math.abs(p.y - g.doorY) < 14 + g.s * 3) {
+      if (paperHitsHome(p, g)) {
         home.delivered = true;
         delivered = true;
         game.paperHitSfxTick += 1;
@@ -388,6 +465,18 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
     home.y += roadDy;
     const laneH = laneAt(home.y);
     home.x = laneH.siL - home.offset * homeScale(home.y);
+    const g = homeGeometry(home);
+
+    if (game.player.invuln <= 0 && playerHitsHome(game, g)) {
+      hurtPlayer(game, 'Crashed into a house', onBestScore);
+      const b = homeHitBounds(g);
+      const laneP = laneAt(PLAYER_Y);
+      game.player.x = clamp(
+        Math.max(game.player.x, b.right + 10 * g.s),
+        laneP.siL - PLAYER_LEFT_EXT,
+        laneP.rL + PLAYER_RIGHT_EXT,
+      );
+    }
 
     if (home.y > 410) {
       if (!home.delivered) {
@@ -406,10 +495,44 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
 
     if (hazard.kind === 'dog') {
       const base = laneO.siL + laneO.sw * hazard.laneU;
-      const sway = Math.sin(game.elapsed * 5 + hazard.phase) * 18;
-      const minDogX = laneO.siL - DOG_GRASS_REACH;
-      const maxDogX = laneO.siL + laneO.sw - DOG_SIDEWALK_PAD;
-      hazard.x = clamp(base + sway, minDogX, maxDogX);
+      const { minDogX, maxDogX } = dogChaseBounds(laneO);
+      if (!Number.isFinite(hazard.x) || hazard.x === 0) {
+        hazard.x = clamp(base, minDogX, maxDogX);
+      }
+      const playerLane = laneAt(PLAYER_Y);
+      const playerMinX = playerLane.siL - DOG_GRASS_REACH;
+      const playerMaxX = playerLane.rL + DOG_CHASE_ROAD_REACH;
+      const playerU = (
+        clamp(game.player.x, playerMinX, playerMaxX) - playerMinX
+      ) / Math.max(1, playerMaxX - playerMinX);
+      const directTargetX = clamp(
+        minDogX + (maxDogX - minDogX) * playerU + game.player.turnInput * DOG_CHASE_LEAD,
+        minDogX,
+        maxDogX,
+      );
+      if (!Number.isFinite(hazard.retargetT)) {
+        hazard.retargetT = rand(DOG_REACTION_DELAY_MIN, DOG_REACTION_DELAY_MAX);
+      }
+      if (!Number.isFinite(hazard.chaseTargetX)) {
+        hazard.chaseTargetX = directTargetX;
+      }
+      hazard.retargetT -= dt;
+      if (hazard.retargetT <= 0) {
+        hazard.chaseTargetX = directTargetX;
+        hazard.retargetT = rand(DOG_REACTION_DELAY_MIN, DOG_REACTION_DELAY_MAX);
+      }
+      const wander = Math.sin(game.elapsed * 4.5 + hazard.phase) * DOG_WANDER_AMPLITUDE;
+      const desiredX = clamp(
+        hazard.chaseTargetX + wander,
+        minDogX,
+        maxDogX,
+      );
+      const maxStep = (DOG_CHASE_SPEED + game.speed * 16) * dt;
+      hazard.x = clamp(
+        hazard.x + clamp(desiredX - hazard.x, -maxStep, maxStep),
+        minDogX,
+        maxDogX,
+      );
     } else if (hazard.kind === 'car') {
       const base = laneO.rL + laneO.rw * hazard.laneU;
       const halfW = carVisualHalfWidth(hazard.y);
@@ -434,8 +557,7 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
       continue;
     }
     const laneO = laneAt(hazard.y);
-    const minDogX = laneO.siL - DOG_GRASS_REACH;
-    const maxDogX = laneO.siL + laneO.sw - DOG_SIDEWALK_PAD;
+    const { minDogX, maxDogX } = dogChaseBounds(laneO);
     hazard.x = resolveDogAvoidanceX(hazard, game.hazards, i, minDogX, maxDogX);
   }
 
@@ -451,7 +573,9 @@ export function updateWorld(game, dt, assetsReady, onBestScore) {
         game,
         hazard.kind === 'dog'
           ? 'A dog knocked her down'
-          : (hazard.kind === 'car' ? 'Hit by a car' : 'Hit an obstacle'),
+          : (hazard.kind === 'car'
+            ? 'Hit by a car'
+            : (hazard.kind === 'trashcan' ? 'Hit a trash can' : 'Hit an obstacle')),
         onBestScore,
       );
       game.hazards.splice(i, 1);

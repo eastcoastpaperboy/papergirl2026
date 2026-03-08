@@ -1,6 +1,6 @@
-import { createGameState } from './entities.js';
+import { createGameState } from '../core/entities.js';
 import { bindInput } from './input.js';
-import { drawScene } from './render.js';
+import { drawScene } from '../render/render.js';
 import {
   firePaper,
   jumpBike,
@@ -8,9 +8,9 @@ import {
   startGame,
   updateWorld,
 } from './world.js';
-import { createAssets, loadAssets } from './asset-loader.js';
-import { createScoreManager } from './score-manager.js';
-import { createAudioManager } from './audio-manager.js';
+import { createAssets, loadAssets } from '../assets/asset-loader.js';
+import { createScoreManager } from '../systems/score-manager.js';
+import { createAudioManager } from '../systems/audio-manager.js';
 
 const canvas = document.getElementById('c');
 const muteBtn = document.getElementById('mute-btn');
@@ -96,6 +96,7 @@ function loop(ts) {
   game.lastTs = ts;
 
   updateWorld(game, dt, assets.ready, saveBest);
+
   audioManager.syncForMode();
   scoreManager.handleModeTransition();
   audioManager.updateFrameSfx();
